@@ -33,8 +33,9 @@ import com.waz.zclient.controllers.SignInController._
 import com.waz.zclient.newreg.fragments.SignUpPhotoFragment
 import com.waz.zclient.newreg.fragments.SignUpPhotoFragment.RegistrationType
 import com.waz.zclient.tracking.{AddPhotoOnRegistrationEvent, GlobalTrackingController}
-import scala.concurrent.duration._
+
 import scala.concurrent.Future
+import scala.concurrent.duration._
 import scala.util.Random
 
 class AppEntryController(implicit inj: Injector, eventContext: EventContext) extends Injectable {
@@ -68,8 +69,7 @@ class AppEntryController(implicit inj: Injector, eventContext: EventContext) ext
     account <- currentAccount
     user <- currentUser
     firstPageState <- firstPage
-    fake <- fakeCreateAccountStage
-    state <- Signal.const(stateForAccountAndUser(account, user, firstPageState, fake)).collect{ case s if s != Waiting => s }
+    state <- Signal.const(stateForAccountAndUser(account, user, firstPageState)).collect{ case s if s != Waiting => s }
   } yield state
 
   val autoConnectInvite = for {
@@ -81,36 +81,42 @@ class AppEntryController(implicit inj: Injector, eventContext: EventContext) ext
     ZLog.verbose(s"Current stage: $stage")
   }
 
-  def stateForAccountAndUser(account: Option[AccountData], user: Option[UserData], firstPageState: FirstStage, fakeCreateAccountStage: Option[AppEntryStage]): AppEntryStage = {
+  def stateForAccountAndUser(account: Option[AccountData], user: Option[UserData], firstPageState: FirstStage): AppEntryStage = {
     ZLog.verbose(s"Current account and user: $account $user")
-    fakeCreateAccountStage.fold{
-      (account, user) match {
-        case (None, _) =>
-          NoAccountState(firstPageState)
-        case (Some(accountData), _) if accountData.clientRegState == ClientRegistrationState.PASSWORD_MISSING && accountData.email.orElse(accountData.pendingEmail).isDefined =>
-          InsertPasswordStage
-        case (Some(accountData), _) if accountData.clientRegState == ClientRegistrationState.LIMIT_REACHED =>
-          DeviceLimitStage
-        case (Some(accountData), _) if accountData.pendingPhone.isDefined && !accountData.verified =>
-          VerifyPhoneStage
-        case (Some(accountData), _) if accountData.pendingEmail.isDefined && accountData.password.isDefined && !accountData.verified =>
-          VerifyEmailStage
-        case (Some(accountData), _) if accountData.regWaiting =>
-          AddNameStage
-        case (Some(accountData), None) if accountData.cookie.isDefined || accountData.accessToken.isDefined =>
-          Waiting
-        case (Some(accountData), Some(userData)) if userData.picture.isEmpty =>
-          AddPictureStage
-        case (Some(accountData), Some(userData)) if userData.handle.isEmpty =>
-          AddHandleStage
-        case (Some(accountData), Some(userData)) if accountData.firstLogin && accountData.clientRegState == ClientRegistrationState.REGISTERED =>
-          FirstEnterAppStage
-        case (Some(accountData), Some(userData)) if accountData.clientRegState == ClientRegistrationState.REGISTERED =>
-          EnterAppStage
-        case _ =>
-          NoAccountState(firstPageState)
-      }
-    } { s => s }
+    (account, user) match {
+      case (None, _) =>
+        NoAccountState(firstPageState)
+      case (Some(accountData), None) if accountData.pendingTeamName.isDefined && accountData.pendingEmail.isEmpty =>
+        SetTeamEmail
+      case (Some(accountData), None) if accountData.pendingTeamName.isDefined && accountData.code.isEmpty =>
+        VerifyTeamEmail
+      case (Some(accountData), None) if accountData.pendingTeamName.isDefined && accountData.name.isEmpty =>
+        SetUserNameTeam
+      case (Some(accountData), None) if accountData.pendingTeamName.isDefined && accountData.password.isEmpty =>
+        SetPasswordTeam
+      case (Some(accountData), _) if accountData.clientRegState == ClientRegistrationState.PASSWORD_MISSING && accountData.email.orElse(accountData.pendingEmail).isDefined =>
+        InsertPasswordStage
+      case (Some(accountData), _) if accountData.clientRegState == ClientRegistrationState.LIMIT_REACHED =>
+        DeviceLimitStage
+      case (Some(accountData), _) if accountData.pendingPhone.isDefined && !accountData.verified =>
+        VerifyPhoneStage
+      case (Some(accountData), _) if accountData.pendingEmail.isDefined && accountData.password.isDefined && !accountData.verified =>
+        VerifyEmailStage
+      case (Some(accountData), _) if accountData.regWaiting =>
+        AddNameStage
+      case (Some(accountData), None) if accountData.cookie.isDefined || accountData.accessToken.isDefined =>
+        Waiting
+      case (Some(accountData), Some(userData)) if userData.picture.isEmpty =>
+        AddPictureStage
+      case (Some(accountData), Some(userData)) if userData.handle.isEmpty =>
+        AddHandleStage
+      case (Some(accountData), Some(userData)) if accountData.firstLogin && accountData.clientRegState == ClientRegistrationState.REGISTERED =>
+        FirstEnterAppStage
+      case (Some(accountData), Some(userData)) if accountData.clientRegState == ClientRegistrationState.REGISTERED =>
+        EnterAppStage
+      case _ =>
+        NoAccountState(firstPageState)
+    }
   }
 
 
@@ -270,17 +276,27 @@ class AppEntryController(implicit inj: Injector, eventContext: EventContext) ext
     firstPage ! LoginScreen
   }
 
-  def setTeamName(name: String): Future[Either[Unit, ErrorResponse]] = fakeInput(SetEmail)
+  def setTeamName(name: String): Future[Either[Unit, ErrorResponse]] =
+    ZMessaging.currentAccounts.createTeamAccount(name) map { _ => Left(()) }
 
-  def setEmail(email: String): Future[Either[Unit, ErrorResponse]] = fakeInput(VerifyEmail)
+  //TODO: Send verification code!
+  def setEmail(email: String): Future[Either[Unit, ErrorResponse]] =
+    ZMessaging.currentAccounts.updateCurrentAccount(_.copy(pendingEmail = Some(EmailAddress(email)))) map { _ => Left(()) }
 
-  def setEmailVerificationCode(code: String): Future[Either[Unit, ErrorResponse]] = fakeInput(SetName)
+  //TODO: Verify code!
+  def setEmailVerificationCode(code: String): Future[Either[Unit, ErrorResponse]] =
+    ZMessaging.currentAccounts.updateCurrentAccount(_.copy(code = Some(ConfirmationCode(code)))) map { _ => Left(()) }
 
-  def setName(name: String): Future[Either[Unit, ErrorResponse]] = fakeInput(SetPassword)
+  def setName(name: String): Future[Either[Unit, ErrorResponse]] =
+    ZMessaging.currentAccounts.updateCurrentAccount(_.copy(name = Some(name))) map { _ => Left(()) }
 
-  def setPassword(password: String): Future[Either[Unit, ErrorResponse]] = fakeInput(SetUsername)
+  //TODO: Do the actual registration
+  def setPassword(password: String): Future[Either[Unit, ErrorResponse]] =
+    ZMessaging.currentAccounts.updateCurrentAccount(_.copy(password= Some(password))) map { _ => Left(()) }
 
-  def setUsername(username: String): Future[Either[Unit, ErrorResponse]] = fakeInput(NoAccountState(FirstScreen))
+  //TODO: set the actual username
+  def setUsername(username: String): Future[Either[Unit, ErrorResponse]] =
+    ZMessaging.currentAccounts.updateCurrentAccount(_.copy(handle = Some(Handle(username)))) map { _ => Left(()) }
 
 }
 
@@ -305,11 +321,10 @@ object AppEntryController {
   object AddHandleStage      extends AppEntryStage
   object InsertPasswordStage extends AppEntryStage
 
-  //TODO: team stages, improve names
-  object SetEmail            extends AppEntryStage
-  object VerifyEmail         extends AppEntryStage
-  object SetName             extends AppEntryStage
-  object SetPassword         extends AppEntryStage
-  object SetUsername         extends AppEntryStage
+  object SetTeamEmail            extends AppEntryStage
+  object VerifyTeamEmail         extends AppEntryStage
+  object SetUserNameTeam         extends AppEntryStage
+  object SetPasswordTeam         extends AppEntryStage
+  object SetUsernameTeam         extends AppEntryStage
   case class NoAccountState(page: FirstStage) extends AppEntryStage
 }

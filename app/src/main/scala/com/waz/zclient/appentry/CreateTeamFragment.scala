@@ -40,11 +40,11 @@ class CreateTeamFragment extends BaseFragment[Container] with FragmentHelper wit
       val entryScene = state match {
         case NoAccountState(FirstScreen) => FirstScreenSceneController(getView.asInstanceOf[ViewGroup])(getContext, this, injector)
         case NoAccountState(RegisterTeamScreen) => TeamNameSceneController(getView.asInstanceOf[ViewGroup])(getContext, this, injector)
-        case SetEmail => SetEmailSceneController(getView.asInstanceOf[ViewGroup])(getContext, this, injector)
-        case VerifyEmail => VerifyEmailSceneController(getView.asInstanceOf[ViewGroup])(getContext, this, injector)
-        case SetName => SetNameSceneController(getView.asInstanceOf[ViewGroup])(getContext, this, injector)
-        case SetPassword => SetPasswordSceneController(getView.asInstanceOf[ViewGroup])(getContext, this, injector)
-        case SetUsername => SetUsernameSceneController(getView.asInstanceOf[ViewGroup])(getContext, this, injector)
+        case SetTeamEmail => SetEmailSceneController(getView.asInstanceOf[ViewGroup])(getContext, this, injector)
+        case VerifyTeamEmail => VerifyEmailSceneController(getView.asInstanceOf[ViewGroup])(getContext, this, injector)
+        case SetUserNameTeam => SetNameSceneController(getView.asInstanceOf[ViewGroup])(getContext, this, injector)
+        case SetPasswordTeam => SetPasswordSceneController(getView.asInstanceOf[ViewGroup])(getContext, this, injector)
+        case SetUsernameTeam => SetUsernameSceneController(getView.asInstanceOf[ViewGroup])(getContext, this, injector)
       }
       TransitionManager.go(entryScene.scene, new SupportAutoTransition2())
       entryScene.onCreate()
